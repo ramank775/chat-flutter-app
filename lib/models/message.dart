@@ -1,4 +1,7 @@
+import 'dart:io';
 import 'dart:math';
+
+import 'package:vartalap/models/media.dart';
 
 import 'user.dart';
 import '../utils/enum_helper.dart';
@@ -13,6 +16,7 @@ enum MessageType {
   TEXT,
   NOTIFICATION,
   ATTACHMENT,
+  MEDIA,
 }
 
 class Message {
@@ -25,6 +29,8 @@ class Message {
   MessageType _type = MessageType.TEXT;
   int _ts = DateTime.now().millisecondsSinceEpoch;
   User sender;
+  List<Media> files;
+
   String get id => _id;
   String get chatId => _chatId;
   String get senderId => _senderId;
@@ -34,7 +40,7 @@ class Message {
   int get timestamp => _ts;
 
   Message(this._id, this._chatId, this._senderId, this._text, this._state,
-      [this._ts, this._type]);
+      [this._ts, this._type, this.files]);
 
   Message.chatMessage(
       String chatId, String senderId, String text, MessageType type) {

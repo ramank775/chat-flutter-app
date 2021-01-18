@@ -1,8 +1,14 @@
+import 'dart:io';
+
+import 'package:carousel_slider/carousel_slider.dart';
 import 'package:emoji_picker/emoji_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:vartalap/widgets/file_selection_item.dart';
+import 'package:vartalap/widgets/sider_item.dart';
 
 class MessageInputWidget extends StatefulWidget {
-  final Function sendMessage;
+  final Function(String text, {List<File> files}) sendMessage;
   MessageInputWidget({Key key, this.sendMessage}) : super(key: key);
 
   @override
@@ -10,15 +16,20 @@ class MessageInputWidget extends StatefulWidget {
 }
 
 class MessageInputState extends State<MessageInputWidget> {
-  Function _sendMessage;
+  Function(String text, {List<File> files, FileType fileType}) _sendMessage;
   bool _isShowSticker;
   FocusNode _inputFocus;
+  bool _isSlider;
+  List<File> _files;
+  FileType _fileType;
+
   final TextEditingController _controller = TextEditingController();
   @override
   void initState() {
     super.initState();
     _sendMessage = widget.sendMessage;
     _isShowSticker = false;
+    _isSlider = false;
     _inputFocus = FocusNode();
     _inputFocus.addListener(onFocusListener);
   }
@@ -56,6 +67,7 @@ class MessageInputState extends State<MessageInputWidget> {
         children: <Widget>[
           Column(
             children: <Widget>[
+              _isSlider ? showConfirmationPreview() : Container(),
               buildInput(),
               (_isShowSticker ? buildSticker() : Container()),
             ],
@@ -120,10 +132,11 @@ class MessageInputState extends State<MessageInputWidget> {
                         focusNode: _inputFocus,
                       ),
                     ),
-                    // IconButton(
-                    //   icon: Icon(Icons.attach_file),
-                    //   onPressed: () {},
-                    // ),
+                    IconButton(
+                      icon: Icon(
+                          this._isSlider ? Icons.close : Icons.attach_file),
+                      onPressed: onFileIconPressed,
+                    ),
                   ],
                 ),
               ),
@@ -141,6 +154,74 @@ class MessageInputState extends State<MessageInputWidget> {
     );
   }
 
+  void onFileSelection(FileType type) async {
+    Navigator.of(context).pop();
+    var multipleFileType = [FileType.image, FileType.video];
+    var result = await FilePicker.platform.pickFiles(
+      type: type,
+      allowCompression: true,
+      allowMultiple: multipleFileType.contains(type),
+    );
+    if (result == null || result.count == 0) {
+      return;
+    }
+    this._files = result.paths.map((e) => File(e)).toList();
+    setState(() {
+      this._isSlider = true;
+      this._fileType = type;
+    });
+  }
+
+  void onFileIconPressed() async {
+    if (this._isSlider) {
+      setState(() {
+        this._isSlider = false;
+        this._files = null;
+        this._fileType = null;
+      });
+      return;
+    }
+    showModalBottomSheet(
+        context: context,
+        backgroundColor: Theme.of(context).backgroundColor,
+        builder: (context) {
+          var items = [
+            FileSelectionItem(
+              Icons.image,
+              "Image",
+              FileType.image,
+              onPressed: onFileSelection,
+            ),
+            FileSelectionItem(
+              Icons.video_collection,
+              "Video",
+              FileType.video,
+              onPressed: onFileSelection,
+            ),
+            FileSelectionItem(
+              Icons.audiotrack,
+              "Audio",
+              FileType.audio,
+              onPressed: onFileSelection,
+            ),
+            FileSelectionItem(
+              Icons.file_present,
+              "File",
+              FileType.any,
+              onPressed: onFileSelection,
+            ),
+          ];
+          return Container(
+            padding: const EdgeInsets.all(8.0),
+            child: GridView.count(
+              crossAxisCount: 4,
+              children: items,
+            ),
+            height: 100,
+          );
+        });
+  }
+
   Widget buildSticker() {
     return EmojiPicker(
       rows: 4,
@@ -153,17 +234,47 @@ class MessageInputState extends State<MessageInputWidget> {
     );
   }
 
+  Widget showConfirmationPreview() {
+    return Container(
+      child: Column(
+        children: <Widget>[
+          CarouselSlider(
+            options: CarouselOptions(
+              autoPlay: false,
+              aspectRatio: 2.0,
+              enlargeCenterPage: true,
+            ),
+            items: buildSliderItems(
+              this._files,
+              this._fileType,
+              onPressed: (file) {
+                setState(() {
+                  this._files.remove(file);
+                  if (this._files.length == 0) {
+                    this._files = null;
+                    this._isSlider = false;
+                    this._fileType = null;
+                  }
+                });
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void sendMessage() {
     var text = this._controller.text;
-    if (text.length == 0) {
+    if (text.length == 0 && this._files == null) {
       return;
     }
-    _sendMessage(text);
-    this._controller.text = "";
-    if (_isShowSticker) {
-      setState(() {
-        _isShowSticker = false;
-      });
-    }
+    _sendMessage(text, files: this._files, fileType: this._fileType);
+
+    setState(() {
+      this._controller.text = "";
+      _isShowSticker = false;
+      _isSlider = false;
+    });
   }
 }

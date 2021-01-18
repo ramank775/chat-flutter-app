@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:vartalap/config/config_store.dart';
@@ -82,5 +84,32 @@ class ApiService {
     http.Response response = await _post("profile/user/sync", {"users": users});
     Map<String, dynamic> resp = _handleResponse(response);
     return resp;
+  }
+
+  static Future<Map<String, dynamic>> getUploadUrl(String fileName) async {
+    http.Response response = await _post("file/signed_url", {
+      "fileName": fileName,
+      "type": "upload",
+    });
+    Map<String, dynamic> resp = _handleResponse(response);
+    return resp;
+  }
+
+  static Future<Map<String, dynamic>> getDownloadUrl(String fileName) async {
+    http.Response response = await _post("file/signed_url", {
+      "fileName": fileName,
+      "type": "download",
+    });
+    Map<String, dynamic> resp = _handleResponse(response);
+    return resp;
+  }
+
+  static Future<bool> uploadFile(String url, File file) async {
+    Uint8List bytes = await file.readAsBytes();
+    var response = await http.put(url, body: bytes);
+    if (response.statusCode == 200) {
+      return true;
+    }
+    return false;
   }
 }

@@ -78,6 +78,16 @@ class DB {
       sent_ts NUMBER,
       retry_count NUMBER DEFAULT 0
     );""");
+
+    batch.execute("""CREATE TABLE resources (
+      id int PRIMARY KEY,
+      resource_id TEXT,
+      local_path TEXT,
+      messageId TEXT NOT NULL,
+      status int DEFAULT 0,
+      type int,
+      FOREIGN KEY(messageId) REFERENCES message(id)
+    );""");
     batch.commit();
   }
 
@@ -87,6 +97,17 @@ class DB {
         ALTER TABLE user
           ADD status NUMBER DEFAULT 0;
       """);
+    }
+    if (next == 3) {
+      await db.execute("""CREATE TABLE resources (
+      id int PRIMARY KEY,
+      resource_id TEXT,
+      local_path TEXT,
+      messageId TEXT NOT NULL,
+      status int DEFAULT 0,
+      type int,
+      FOREIGN KEY(messageId) REFERENCES message(id)
+    );""");
     }
   }
 

@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:vartalap/dataAccessLayer/db.dart';
 import 'package:vartalap/models/chat.dart';
+import 'package:vartalap/models/media.dart';
 import 'package:vartalap/models/message.dart';
 import 'package:vartalap/models/socketMessage.dart';
 import 'package:vartalap/models/user.dart';
+import 'package:vartalap/services/file_upload_service.dart';
 import 'package:vartalap/services/socket_service.dart';
 import 'package:vartalap/services/user_service.dart';
 import 'package:vartalap/utils/enum_helper.dart';
@@ -14,6 +16,7 @@ class ChatService {
   static Stream<SocketMessage> onNotificationMessagStream;
   static StreamSubscription<SocketMessage> _newMessageSub$;
   static StreamSubscription<SocketMessage> _notificationSub$;
+  static StreamSubscription<FileUplaodMessge> _fileUploadSub$;
 
   static Future<void> init() async {
     onNewMessageStream = SocketService.instance.stream
@@ -29,12 +32,37 @@ class ChatService {
     _newMessageSub$ = onNewMessageStream.listen((event) {});
     _notificationSub$ = onNotificationMessagStream.listen((event) {});
     await SocketService.instance.init();
+
+    _fileUploadSub$ =
+        FileUploadService.instance.onuploadComplete.listen((event) async {
+      var files = event.message.files;
+      bool sendMessage;
+      if (files == null || files.length == 0) {
+        sendMessage = true;
+      } else {
+        files = files
+            .where((element) => element.status == MediaStatus.UPLOADED)
+            .toList();
+        if (files.length > 0) {
+          event.message.files = files;
+          sendMessage = true;
+        } else {
+          sendMessage = false;
+        }
+      }
+      if (sendMessage) {
+        SocketMessage smsg =
+            SocketMessage.fromChatMessage(event.message, event.chat);
+        await SocketService.instance.send(smsg);
+      }
+    });
   }
 
   static void dispose() {
     SocketService.instance.dispose();
     _newMessageSub$.cancel();
     _notificationSub$.cancel();
+    _fileUploadSub$.cancel();
   }
 
   static Future<List<ChatPreview>> getChats() async {
@@ -122,8 +150,7 @@ class ChatService {
     }
     await _saveMessage(msg);
     if (_isSelfChat(chat)) return;
-    SocketMessage smsg = SocketMessage.fromChatMessage(msg, chat);
-    await SocketService.instance.send(smsg);
+    FileUploadService.instance.upload(msg, chat);
   }
 
   static Future<List<Message>> getChatMessages(String chatid) async {
@@ -133,15 +160,18 @@ class ChatService {
     var userResult = (await _getChatUser(chatid)).toSet();
     List<Message> msgs = [];
     var currentUser = UserService.getLoggedInUser();
-    result.forEach((msgMap) {
+    for (var msgMap in result) {
       var msg = Message.fromMap(msgMap);
       var user = userResult.singleWhere((u) => u.username == msg.senderId,
           orElse: () => currentUser.username == msg.senderId
               ? ChatUser.fromUser(currentUser)
               : null);
+      var files = await db
+          .query("resources", where: "messageId=?", whereArgs: [msg.id]);
+      msg.files = files.map((e) => Media.fromMap(e)).toList();
       msg.sender = user;
       msgs.add(msg);
-    });
+    }
     return msgs.reversed.toList();
   }
 
@@ -221,11 +251,29 @@ class ChatService {
     return result.length == users.length;
   }
 
-  static Future<bool> _saveMessage(Message msg) async {
+  static Future<Message> _saveMessage(Message msg) async {
     var db = await DB().getDb();
-    var result = await db.insert("message", msg.toMap());
-    print("Save Msg Result : $result");
-    return result > 0;
+    var msgMap = msg.toMap();
+    msgMap.remove('fileIds');
+    await db.insert("message", msgMap);
+    await _saveResources(msg);
+    return msg;
+  }
+
+  static Future<Message> _saveResources(Message msg) async {
+    if (msg.files == null) return msg;
+    if (msg.files.length == 0) return msg;
+
+    var db = await DB().getDb();
+    var batch = db.batch();
+    for (var file in msg.files) {
+      batch.insert("resources", file.toMap());
+    }
+    var result = await batch.commit();
+    for (var i = 0; i < result.length; i++) {
+      msg.files[i].id = result[i];
+    }
+    return msg;
   }
 
   static Future<bool> _isDuplicate(SocketMessage message) async {
@@ -258,8 +306,23 @@ class ChatService {
       chat.addUser(ChatUser.fromUser(self));
       await _saveChat(chat);
     }
-    Message _msg = Message(msg.msgId, chat.id, msg.from, msg.text,
-        MessageState.NEW, DateTime.now().millisecondsSinceEpoch, msg.type);
+    var files = (msg.fileIds == null ? [] : msg.fileIds)
+        .map((e) => Media(
+              msg.msgId,
+              resourceId: e,
+              status: MediaStatus.UPLOADED,
+            ))
+        .toList();
+    Message _msg = Message(
+      msg.msgId,
+      chat.id,
+      msg.from,
+      msg.text,
+      MessageState.NEW,
+      DateTime.now().millisecondsSinceEpoch,
+      msg.type,
+      files,
+    );
     await _saveMessage(_msg);
     return msg;
   }

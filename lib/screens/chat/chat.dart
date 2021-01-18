@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:vartalap/models/chat.dart';
+import 'package:vartalap/models/media.dart';
 import 'package:vartalap/models/message.dart';
 import 'package:vartalap/models/socketMessage.dart';
 import 'package:vartalap/models/user.dart';
-import 'package:vartalap/screens/profile_img/profile_img.dart';
+// import 'package:vartalap/screens/profile_img/profile_img.dart';
 import 'package:vartalap/services/chat_service.dart';
 import 'package:vartalap/services/socket_service.dart';
 import 'package:vartalap/services/user_service.dart';
@@ -175,10 +178,33 @@ class ChatState extends State<ChatScreen> {
                   return null; //
                 }),
           ),
-          new MessageInputWidget(sendMessage: (String text) async {
-            var msg = Message.chatMessage(this._chat.id,
-                this.widget.currentUser.username, text, MessageType.TEXT);
+          new MessageInputWidget(sendMessage: (
+            String text, {
+            List<File> files,
+            FileType fileType,
+          }) async {
+            MessageType type = MessageType.TEXT;
+            if (files != null && files.length > 0) {
+              type = MessageType.MEDIA;
+            }
+            var msg = Message.chatMessage(
+              this._chat.id,
+              this.widget.currentUser.username,
+              text,
+              type,
+            );
             msg.sender = this.widget.currentUser;
+            msg.files = type == MessageType.MEDIA
+                ? files
+                    .map((f) => Media(
+                          msg.id,
+                          file: f,
+                          path: f.path,
+                          type: fileType,
+                          status: MediaStatus.UPLOAD_PENDING,
+                        ))
+                    .toList()
+                : null;
             await ChatService.sendMessage(msg, this._chat);
             setState(() {
               _messages.insert(0, msg);

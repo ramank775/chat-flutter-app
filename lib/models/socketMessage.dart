@@ -1,6 +1,13 @@
 import 'package:vartalap/models/chat.dart';
+import 'package:vartalap/models/media.dart';
 import 'package:vartalap/models/message.dart';
 import 'package:vartalap/utils/enum_helper.dart';
+
+class SocketMedia {
+  String resourceId;
+  int type;
+  int status;
+}
 
 class SocketMessage {
   String msgId;
@@ -9,6 +16,7 @@ class SocketMessage {
   MessageType type;
   String chatId;
   String text;
+  List<String> fileIds;
   MessageState state;
 
   SocketMessage.fromChatMessage(Message msg, Chat chat) {
@@ -17,6 +25,9 @@ class SocketMessage {
     this.type = msg.type;
     this.chatId = msg.chatId;
     this.text = msg.text;
+    if (msg.files != null || msg.files.length > 0) {
+      this.fileIds = msg.files.map((e) => e.resourceId).toList();
+    }
     this.state = msg.state;
     this.to = chat.users
         .singleWhere((element) => element.username != msg.senderId)
@@ -30,6 +41,7 @@ class SocketMessage {
     this.type = stringToEnum(map["type"], MessageType.values);
     this.text = map["text"];
     this.chatId = map["chatId"] != null ? map["chatId"] : this.from;
+    this.fileIds = map["fileIds"];
     this.state = map["state"] != null
         ? stringToEnum(map["state"], MessageState.values)
         : MessageState.NEW;
@@ -43,14 +55,27 @@ class SocketMessage {
       "type": enumToString(this.type),
       "chatId": this.chatId,
       "text": this.text,
+      "fileIds": this.fileIds,
       "state": enumToString(this.state)
     };
     return map;
   }
 
   Message toMessage() {
-    Message msg = Message(this.msgId, this.chatId, this.from, this.text,
-        MessageState.NEW, DateTime.now().millisecondsSinceEpoch, this.type);
+    var files = (this.fileIds == null ? [] : this.fileIds)
+        .map((e) =>
+            Media(this.msgId, resourceId: e, status: MediaStatus.UPLOADED))
+        .toList();
+    Message msg = Message(
+      this.msgId,
+      this.chatId,
+      this.from,
+      this.text,
+      MessageState.NEW,
+      DateTime.now().millisecondsSinceEpoch,
+      this.type,
+      files,
+    );
 
     return msg;
   }

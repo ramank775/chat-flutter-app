@@ -55,7 +55,7 @@ class SocketService {
       "retry_count": 0
     };
     db.insert("out_message", outMessage);
-    if (_channel != null && _channel.closeCode != null) {
+    if (_channel == null || (_channel != null && _channel.closeCode != null)) {
       await db.update("out_message", {"sent": -1},
           where: "messageId=?", whereArgs: [msg.msgId]);
 

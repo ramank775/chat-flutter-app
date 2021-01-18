@@ -44,6 +44,8 @@ dependencies:
   url_launcher: ^5.7.5
   share: ^0.6.5+3
   avatar_letter: ^1.0.1
+  file_picker: ^2.1.5+1
+  carousel_slider: ^2.3.1
   
 dev_dependencies:
   flutter_test:
